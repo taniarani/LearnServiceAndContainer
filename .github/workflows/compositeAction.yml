@@ -20,21 +20,36 @@ jobs:
       - name: Lint code
         run: npm run lint
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get code
-        uses: actions/checkout@v4
+    environment: testing # Optional GitHub environment name (can hold secrets, approvals)
+    runs-on: ubuntu-latest # Runner VM image
+    # container: 
+    #   image: node:16 
+    env: 
+      MONGODB_CONNECTION_PROTOCOL: mongodb
+      MONGODB_CLUSTER_ADDRESS: 127.0.0.1.27017
+      MONGODB_USERNAME: root
+      MONGODB_PASSWORD: example
+      PORT: 8080 # App/server port used for wait-on
+    services: # Additional containers accessible via localhost:<port> or hostname
+      mongodb:
+        image: mongo # Official MongoDB image
+        ports:
+          - 27017:27017
+        env: # Initialize the MongoDB root user
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+    steps: # Ordered sequence of actions and shell commands
+      - name: Get Code # Checkout repository contents into the runner/container
+        uses: actions/checkout@v3
       - name: Load and cache dependencies
         uses: ./.github/actions/cached-deps
-      - name: Test code
-        id: run-tests
-        run: npm run test
-      - name: Upload test report
-        if: failure() && steps.run-tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: test.json
+      - name: Run server # Start the app then wait until it's reachable before testing
+        run: npm start & npx wait-on http://127.0.0.1:$PORT # wait-on polls the URL until ready
+      - name: Run tests # Execute test suite
+        run: npm test
+      - name: Output information # Example: show an env value (demonstration only)
+        run: |
+          echo "MONGODB_USERNAME: $MONGODB_USERNAME"
   build:
     needs: test
     runs-on: ubuntu-latest
