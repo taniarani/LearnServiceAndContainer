@@ -1,47 +1,55 @@
-name: Deployment (Container)
-on:
-  push:
-    branches:
+name: Deployment (Container) # Human-friendly name shown in the Actions tab
+on: # Event(s) that trigger this workflow
+  push: # Run whenever code is pushed
+    branches: # Only run for these branches
       - main
       - dev
-env:
-  CACHE_KEY: node-deps
-  MONGODB_DB_NAME: gha-demo
+env: # Top-level (workflow-wide) environment variables available to all jobs
+  CACHE_KEY: node-deps # Key prefix used for dependency caching
+  MONGODB_DB_NAME: gha-demo # Example database name used in tests/deploy output
 jobs:
   test:
-    environment: testing
-    runs-on: ubuntu-latest
-    env:
-      MONGODB_CONNECTION_PROTOCOL: mongodb+srv
-      MONGODB_CLUSTER_ADDRESS: cluster0.ntrwp.mongodb.net
-      MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
-      MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
-      PORT: 8080
-    steps:
-      - name: Get Code
+    environment: testing # Optional GitHub environment name (can hold secrets, approvals)
+    runs-on: ubuntu-latest # Runner VM image
+    container: # Run all steps inside this container instead of the VM default
+      image: node:16 # Uses official Node.js 16 image (has Node & npm preinstalled)
+    env: # Job-level env vars (override / extend workflow env)
+      MONGODB_CONNECTION_PROTOCOL: mongodb
+      MONGODB_CLUSTER_ADDRESS: mongodb
+      MONGODB_USERNAME: root
+      MONGODB_PASSWORD: example
+      PORT: 8080 # App/server port used for wait-on
+    services: # Additional containers accessible via localhost:<port> or hostname
+      mongodb:
+        image: mongo # Official MongoDB image
+        env: # Initialize the MongoDB root user
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+    steps: # Ordered sequence of actions and shell commands
+      - name: Get Code # Checkout repository contents into the runner/container
         uses: actions/checkout@v3
-      - name: Cache dependencies
+      - name: Cache dependencies # Speed up installs by reusing npm cache between runs
         uses: actions/cache@v3
         with:
-          path: ~/.npm
-          key: ${{ env.CACHE_KEY }}-${{ hashFiles('**/package-lock.json') }}
-      - name: Install dependencies
+          path: ~/.npm # Folder to cache (npm cache directory)
+          key: ${{ env.CACHE_KEY }}-${{ hashFiles('**/package-lock.json') }} # Unique key per lockfile content
+      - name: Install dependencies # Clean (CI) install to match lockfile exactly
         run: npm ci
-      - name: Run server
-        run: npm start & npx wait-on http://127.0.0.1:$PORT # requires MongoDB Atlas to accept requests from anywhere!
-      - name: Run tests
+      - name: Run server # Start the app then wait until it's reachable before testing
+        run: npm start & npx wait-on http://127.0.0.1:$PORT # wait-on polls the URL until ready
+      - name: Run tests # Execute test suite
         run: npm test
-      - name: Output information
+      - name: Output information # Example: show an env value (demonstration only)
         run: |
           echo "MONGODB_USERNAME: $MONGODB_USERNAME"
   deploy:
-    needs: test
-    runs-on: ubuntu-latest
+    needs: test # Ensure tests job completes successfully before deploy runs
+    runs-on: ubuntu-latest # Separate runner (not reusing previous container)
     steps:
-      - name: Output information
+      - name: Output information # Example deployment step placeholder
         env:
-          PORT: 3000
+          PORT: 3000 # Override PORT only for this single step
         run: |        
-          echo "MONGODB_DB_NAME: $MONGODB_DB_NAME"
-          echo "MONGODB_USERNAME: $MONGODB_USERNAME"
-          echo "${{ env.PORT }}"
+          echo "MONGODB_DB_NAME: $MONGODB_DB_NAME" # Uses top-level env
+          echo "MONGODB_USERNAME: $MONGODB_USERNAME" # Would be empty here (not set globally)
+          echo "${{ env.PORT }}" # Demonstrates referencing step env var
